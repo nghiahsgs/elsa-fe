@@ -3,7 +3,7 @@ import { User } from '../types';
 
 interface AuthState {
   user: User | null;
-  login: (username: string, password: string) => boolean;
+  setUser: (user: Partial<User>) => void;
   logout: () => void;
 }
 
@@ -14,15 +14,9 @@ const mockUsers: User[] = [
 
 export const useAuthStore = create<AuthState>((set) => ({
   user: null,
-  login: (username: string, password: string) => {
-    const user = mockUsers.find(
-      u => u.username === username && u.password === password
-    );
-    if (user) {
-      set({ user });
-      return true;
-    }
-    return false;
-  },
-  logout: () => set({ user: null })
+  setUser: (user) => set({ user: { ...user, id: user.id || 'temp-id' } as User }),
+  logout: () => {
+    localStorage.removeItem('token');
+    set({ user: null });
+  }
 }));

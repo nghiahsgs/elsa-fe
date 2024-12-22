@@ -10,15 +10,13 @@ import {
   Link,
   CircularProgress
 } from '@mui/material';
-import { useAuthStore } from '../store/authStore';
-import { loginUser } from '../services/api';
+import { signupUser } from '../services/api';
 
-export default function Login() {
+export default function Signup() {
   const router = useRouter();
-  const { message } = router.query;
-  const setUser = useAuthStore(state => state.setUser);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isClient, setIsClient] = useState(false);
@@ -27,24 +25,28 @@ export default function Login() {
     setIsClient(true);
   }, []);
 
-  const handleLogin = async () => {
+  const handleSignup = async () => {
+    if (password !== confirmPassword) {
+      setError('Passwords do not match');
+      return;
+    }
+
     try {
       setIsLoading(true);
       setError('');
       
-      const response = await loginUser({
-        username: email,
+      const response = await signupUser({
+        email,
         password
       });
 
-      // Store the token and update auth state
+      // Signup successful, got access token
       if (response.access_token) {
-        localStorage.setItem('token', response.access_token);
-        setUser({ email }); // Update this based on your user state needs
-        router.push('/lobby');
+        // You might want to store the token somewhere if needed
+        router.push('/login?message=Signup successful! Please login.');
       }
     } catch (err) {
-      setError('Invalid email or password');
+      setError('An error occurred during signup. Please try again.');
       console.error(err);
     } finally {
       setIsLoading(false);
@@ -66,19 +68,9 @@ export default function Login() {
         }}
       >
         <Typography component="h1" variant="h5">
-          Login
+          Sign Up
         </Typography>
         <Box component="form" noValidate sx={{ mt: 1 }}>
-          {message && (
-            <Alert severity="success" sx={{ mt: 2, mb: 2 }}>
-              {message}
-            </Alert>
-          )}
-          {error && (
-            <Alert severity="error" sx={{ mt: 2, mb: 2 }}>
-              {error}
-            </Alert>
-          )}
           <TextField
             margin="normal"
             required
@@ -99,22 +91,39 @@ export default function Login() {
             label="Password"
             type="password"
             id="password"
-            autoComplete="current-password"
+            autoComplete="new-password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
           />
+          <TextField
+            margin="normal"
+            required
+            fullWidth
+            name="confirmPassword"
+            label="Confirm Password"
+            type="password"
+            id="confirmPassword"
+            autoComplete="new-password"
+            value={confirmPassword}
+            onChange={(e) => setConfirmPassword(e.target.value)}
+          />
+          {error && (
+            <Alert severity="error" sx={{ mt: 2 }}>
+              {error}
+            </Alert>
+          )}
           <Button
             fullWidth
             variant="contained"
             sx={{ mt: 3, mb: 2 }}
-            onClick={handleLogin}
+            onClick={handleSignup}
             disabled={isLoading}
           >
-            {isLoading ? <CircularProgress size={24} /> : 'Login'}
+            {isLoading ? <CircularProgress size={24} /> : 'Sign Up'}
           </Button>
           <Box sx={{ textAlign: 'center' }}>
-            <Link href="/signup" variant="body2">
-              Don't have an account? Sign Up
+            <Link href="/login" variant="body2">
+              Already have an account? Login
             </Link>
           </Box>
         </Box>

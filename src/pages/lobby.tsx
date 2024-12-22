@@ -6,18 +6,25 @@ import {
   Button,
   Typography,
   Dialog,
-  TextField
+  TextField,
+  AppBar,
+  Toolbar,
+  IconButton,
+  Stack
 } from '@mui/material';
+import LogoutIcon from '@mui/icons-material/Logout';
 import { useAuthStore } from '../store/authStore';
 import { useQuizStore } from '../store/quizStore';
 
 export default function Lobby() {
   const router = useRouter();
   const user = useAuthStore(state => state.user);
-  const [joinDialogOpen, setJoinDialogOpen] = useState(false);
-  const [quizCode, setQuizCode] = useState('');
+  const logout = useAuthStore(state => state.logout);
   const joinQuiz = useQuizStore(state => state.joinQuiz);
   const [isClient, setIsClient] = useState(false);
+  const [openJoinDialog, setOpenJoinDialog] = useState(false);
+  const [quizCode, setQuizCode] = useState('');
+  const [error, setError] = useState('');
 
   useEffect(() => {
     setIsClient(true);
@@ -27,58 +34,114 @@ export default function Lobby() {
   }, [user]);
 
   const handleJoinQuiz = () => {
-    if (joinQuiz(quizCode, user)) {
-      router.push('/game');
+    if (user && joinQuiz(quizCode, user)) {
+      router.push(`/quiz-lobby/${quizCode}`);
+    } else {
+      setError('Invalid quiz code');
     }
   };
 
-  if (!isClient) {
-    return null; // Return null on server-side
+  const handleLogout = () => {
+    logout();
+    router.push('/login');
+  };
+
+  if (!isClient || !user) {
+    return null;
   }
 
   return (
-    <Container maxWidth="sm">
-      <Box sx={{ mt: 8, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
-        <Typography variant="h4">Welcome to Quiz Game</Typography>
-        
-        <Button
-          variant="contained"
-          color="primary"
-          fullWidth
-          onClick={() => setJoinDialogOpen(true)}
-        >
-          Join Quiz Game
-        </Button>
+    <Box sx={{ flexGrow: 1 }}>
+      <AppBar position="static" sx={{ marginBottom: 4 }}>
+        <Toolbar>
+          <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
+            Welcome to Quiz Game
+          </Typography>
+          <IconButton
+            size="large"
+            color="inherit"
+            onClick={handleLogout}
+            sx={{
+              transition: 'transform 0.2s',
+              '&:hover': {
+                transform: 'scale(1.1)',
+              }
+            }}
+          >
+            <LogoutIcon />
+          </IconButton>
+        </Toolbar>
+      </AppBar>
 
-        <Button
-          variant="contained"
-          color="secondary"
-          fullWidth
-          onClick={() => router.push('/create-quiz')}
-        >
-          Create New Quiz
-        </Button>
+      <Container maxWidth="sm">
+        <Box sx={{ 
+          display: 'flex', 
+          flexDirection: 'column', 
+          alignItems: 'center',
+          gap: 3
+        }}>
+          <Typography variant="h4" component="h1" gutterBottom>
+            {user.email}'s Dashboard
+          </Typography>
 
-        <Dialog open={joinDialogOpen} onClose={() => setJoinDialogOpen(false)}>
-          <Box sx={{ p: 3 }}>
-            <Typography variant="h6">Enter Quiz Code</Typography>
+          <Stack spacing={2} direction="row">
+            <Button
+              variant="contained"
+              color="primary"
+              size="large"
+              onClick={() => router.push('/create-quiz')}
+              sx={{
+                minWidth: 200,
+                transition: 'transform 0.2s',
+                '&:hover': {
+                  transform: 'scale(1.05)',
+                }
+              }}
+            >
+              Create Quiz
+            </Button>
+            <Button
+              variant="contained"
+              color="secondary"
+              size="large"
+              onClick={() => setOpenJoinDialog(true)}
+              sx={{
+                minWidth: 200,
+                transition: 'transform 0.2s',
+                '&:hover': {
+                  transform: 'scale(1.05)',
+                }
+              }}
+            >
+              Join Quiz
+            </Button>
+          </Stack>
+        </Box>
+
+        <Dialog open={openJoinDialog} onClose={() => setOpenJoinDialog(false)}>
+          <Box sx={{ p: 3, minWidth: 300 }}>
+            <Typography variant="h6" gutterBottom>
+              Join Quiz
+            </Typography>
             <TextField
+              autoFocus
+              margin="dense"
+              label="Quiz Code"
               fullWidth
               value={quizCode}
               onChange={(e) => setQuizCode(e.target.value)}
-              margin="normal"
+              error={!!error}
+              helperText={error}
             />
-            <Button
-              fullWidth
-              variant="contained"
-              onClick={handleJoinQuiz}
-              sx={{ mt: 2 }}
-            >
-              Join
-            </Button>
+            <Box sx={{ mt: 2, display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
+              <Button onClick={() => setOpenJoinDialog(false)}>Cancel</Button>
+              <Button variant="contained" onClick={handleJoinQuiz}>
+                Join
+              </Button>
+            </Box>
           </Box>
         </Dialog>
-      </Box>
-    </Container>
+      </Container>
+    </Box>
   );
 }
