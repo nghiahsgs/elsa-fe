@@ -78,13 +78,13 @@ export default function QuizLobby() {
         }
 
         const data = await response.json();
-        const existingParticipant = data.participants.find(p => p.user_id === user.id);
+        const existingParticipant = data.participants.find(p => p.email === user.email);
         console.log('Current participants:', data.participants);
         console.log('Current user:', user);
-        console.log('Found participant:', existingParticipant);
+        console.log('existingParticipant:', existingParticipant);
 
         if (existingParticipant) {
-          router.replace('/');
+          router.replace('/lobby');
           return;
         }
 
@@ -281,10 +281,7 @@ export default function QuizLobby() {
                     <ListItemText
                       primary={participant.email}
                       secondary={
-                        <>
-                          {participant.user_id === quiz?.created_by ? 'Host • ' : ''}
-                          {new Date(participant.connected_at).toLocaleTimeString()}
-                        </>
+                        participant.user_id === quiz?.created_by ? 'Host' : null
                       }
                     />
                   </ListItem>

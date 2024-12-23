@@ -33,7 +33,7 @@ export const useAuth = (requireAuth: boolean = true) => {
             router.push('/login');
             return;
           }
-          console.log('Decoded token:', decoded);
+          // console.log('Decoded token:', decoded);
 
           // Set user info from token
           setUser({ 

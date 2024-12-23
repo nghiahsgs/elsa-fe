@@ -130,7 +130,20 @@ export default function Lobby() {
         </Box>
 
         <Dialog open={openJoinDialog} onClose={() => setOpenJoinDialog(false)}>
-          <Box sx={{ p: 3, minWidth: 300 }}>
+          <Box 
+            component="form" 
+            sx={{ p: 3, minWidth: 300 }}
+            onSubmit={(e) => {
+              e.preventDefault();
+              handleJoinQuiz();
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                handleJoinQuiz();
+              }
+            }}
+          >
             <Typography variant="h6" gutterBottom>
               Join Quiz
             </Typography>
@@ -146,7 +159,12 @@ export default function Lobby() {
             />
             <Box sx={{ mt: 2, display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
               <Button onClick={() => setOpenJoinDialog(false)}>Cancel</Button>
-              <Button variant="contained" onClick={handleJoinQuiz} disabled={isLoading}>
+              <Button 
+                variant="contained" 
+                onClick={handleJoinQuiz} 
+                disabled={isLoading}
+                type="submit"
+              >
                 {isLoading ? <CircularProgress size={24} /> : 'Join'}
               </Button>
             </Box>
