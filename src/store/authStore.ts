@@ -11,8 +11,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   user: null,
   setUser: (user) => set({ 
     user: { 
-      ...user, 
-      id: user.id || 'temp-id' 
+      ...user
     } as User 
   }),
   logout: () => {

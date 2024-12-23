@@ -44,6 +44,8 @@ interface WebSocketMessage {
   participants?: Participant[];
 }
 
+const BASE_URL = 'http://0.0.0.0:8002/api'; // Replace with your base URL
+
 export default function QuizLobby() {
   const router = useRouter();
   const { code } = router.query;
@@ -53,38 +55,59 @@ export default function QuizLobby() {
   const [quiz, setQuiz] = useState<QuizInfo | null>(null);
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [alreadyJoined, setAlreadyJoined] = useState(false);
 
-  // Fetch quiz details and check participants
   useEffect(() => {
-    const fetchQuizAndCheckParticipants = async () => {
-      if (typeof code === 'string' && user?.id) {
-        try {
-          // Fetch quiz details
-          const quizData = await getQuizByCode(code);
-          setQuiz(quizData);
+    const checkAccess = async () => {
+      if (!code || !user?.id) return;
 
-          // Check if user already joined
-          const currentParticipants = await getQuizParticipants(quizData.id);
-          if (currentParticipants.includes(user.id)) {
-            setAlreadyJoined(true);
-            setError('You have already joined this quiz in another window');
-            return;
-          }
+      try {
+        setIsLoading(true);
 
-          // Connect to WebSocket only if not already joined
-          connectWebSocket(code);
-        } catch (err) {
-          console.error('Failed to fetch quiz details or check participants:', err);
-          setError('Failed to join quiz');
-        } finally {
-          setIsLoading(false);
+        // First get quiz details
+        const quizData = await getQuizByCode(code as string);
+        
+        // Then check participants
+        const response = await fetch(`${BASE_URL}/quizzes/${quizData.id}/participants`, {
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('token')}`,
+          },
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to fetch participants');
         }
+
+        const data = await response.json();
+        const existingParticipant = data.participants.find(p => p.user_id === user.id);
+        console.log('Current participants:', data.participants);
+        console.log('Current user:', user);
+        console.log('Found participant:', existingParticipant);
+
+        if (existingParticipant) {
+          router.replace('/');
+          return;
+        }
+
+        // If we get here, user can join
+        setQuiz(quizData);
+        connectWebSocket(code as string);
+      } catch (err) {
+        console.error('Failed to check access:', err);
+        setError('Failed to join quiz');
+      } finally {
+        setIsLoading(false);
       }
     };
 
-    fetchQuizAndCheckParticipants();
-  }, [code, user]);
+    checkAccess();
+    
+    // Cleanup function
+    return () => {
+      if (socket?.readyState === WebSocket.OPEN) {
+        socket.close(1000, 'Component unmounting');
+      }
+    };
+  }, [code, user, router]);
 
   const connectWebSocket = (quizCode: string) => {
     const token = localStorage.getItem('token');
@@ -180,17 +203,6 @@ export default function QuizLobby() {
       <Container>
         <Box sx={{ mt: 4 }}>
           <Alert severity="error">{error}</Alert>
-          {alreadyJoined && (
-            <Box sx={{ mt: 2, textAlign: 'center' }}>
-              <Button
-                variant="contained"
-                color="primary"
-                onClick={() => router.push('/')}
-              >
-                Back to Home
-              </Button>
-            </Box>
-          )}
         </Box>
       </Container>
     );

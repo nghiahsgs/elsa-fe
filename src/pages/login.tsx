@@ -40,7 +40,11 @@ export default function Login() {
       // Store the token and update auth state
       if (response.access_token) {
         localStorage.setItem('token', response.access_token);
-        setUser({ email, token: response.access_token }); 
+        setUser({ 
+          id: response.user_id,  
+          email, 
+          token: response.access_token 
+        }); 
         router.push('/lobby');
       }
     } catch (err) {
