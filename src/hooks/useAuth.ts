@@ -35,7 +35,10 @@ export const useAuth = (requireAuth: boolean = true) => {
           }
 
           // Set user info from token
-          setUser({ email: decoded.sub });
+          setUser({ 
+            id: decoded.sub, // Using email as id for now
+            email: decoded.sub 
+          });
         }
       } catch (error) {
         console.error('Auth error:', error);

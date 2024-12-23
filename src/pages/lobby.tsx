@@ -26,6 +26,8 @@ export default function Lobby() {
   const [quizCode, setQuizCode] = useState('');
   const [error, setError] = useState('');
 
+  console.log('Current user:', user);
+
   const handleJoinQuiz = () => {
     if (user && joinQuiz(quizCode, user)) {
       router.push(`/quiz-lobby/${quizCode}`);
