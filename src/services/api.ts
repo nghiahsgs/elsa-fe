@@ -158,3 +158,29 @@ export const getQuizByCode = async (code: string): Promise<CreateQuizResponse> =
     throw error;
   }
 };
+
+interface QuizParticipant {
+  user_id: string;
+  email: string;
+  connected_at: string;
+}
+
+interface QuizParticipantsResponse {
+  participants: QuizParticipant[];
+}
+
+export const getQuizParticipants = async (quizId: string): Promise<string[]> => {
+  const token = localStorage.getItem('token');
+  const response = await fetch(`${BASE_URL}/quizzes/${quizId}/participants`, {
+    headers: {
+      'Authorization': `Bearer ${token}`,
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error('Failed to fetch quiz participants');
+  }
+
+  const data: QuizParticipantsResponse = await response.json();
+  return data.participants.map(p => p.user_id);
+};

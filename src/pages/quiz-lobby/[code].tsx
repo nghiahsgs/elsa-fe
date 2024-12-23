@@ -4,28 +4,30 @@ import {
   Container,
   Box,
   Typography,
-  List,
-  ListItem,
-  ListItemIcon,
-  ListItemText,
   Button,
   CircularProgress,
   Alert,
-  Stack,
   Paper,
-  Chip
+  Stack,
+  List,
+  ListItem,
+  ListItemText,
+  ListItemIcon,
+  Avatar,
 } from '@mui/material';
 import PersonIcon from '@mui/icons-material/Person';
 import StarsIcon from '@mui/icons-material/Stars';
+import QuizIcon from '@mui/icons-material/Quiz';
+import TimerIcon from '@mui/icons-material/Timer';
+import ShuffleIcon from '@mui/icons-material/Shuffle';
 import { useQuizStore } from '../../store/quizStore';
 import { useAuth } from '../../hooks/useAuth';
-import { getQuizByCode } from '../../services/api';
-import { CreateQuizResponse } from '../../services/api';
+import { getQuizByCode, getQuizParticipants } from '../../services/api';
 
 interface Participant {
-  id: string;
+  user_id: string;
   email: string;
-  is_host: boolean;
+  connected_at: string;
 }
 
 interface QuizInfo {
@@ -38,47 +40,58 @@ interface QuizInfo {
 
 interface WebSocketMessage {
   type: string;
-  quiz: QuizInfo;
-  participants: Participant[];
+  quiz?: QuizInfo;
+  participants?: Participant[];
 }
 
 export default function QuizLobby() {
   const router = useRouter();
   const { code } = router.query;
   const { user } = useAuth();
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [quiz, setQuiz] = useState<CreateQuizResponse | null>(null);
-  const [participants, setParticipants] = useState<Participant[]>([]);
   const [socket, setSocket] = useState<WebSocket | null>(null);
-  const startQuiz = useQuizStore(state => state.startQuiz);
+  const [error, setError] = useState('');
+  const [quiz, setQuiz] = useState<QuizInfo | null>(null);
+  const [participants, setParticipants] = useState<Participant[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [alreadyJoined, setAlreadyJoined] = useState(false);
 
-  // Fetch quiz details
+  // Fetch quiz details and check participants
   useEffect(() => {
-    const fetchQuizDetails = async () => {
-      if (typeof code === 'string') {
+    const fetchQuizAndCheckParticipants = async () => {
+      if (typeof code === 'string' && user?.id) {
         try {
+          // Fetch quiz details
           const quizData = await getQuizByCode(code);
           setQuiz(quizData);
+
+          // Check if user already joined
+          const currentParticipants = await getQuizParticipants(quizData.id);
+          if (currentParticipants.includes(user.id)) {
+            setAlreadyJoined(true);
+            setError('You have already joined this quiz in another window');
+            return;
+          }
+
+          // Connect to WebSocket only if not already joined
+          connectWebSocket(code);
         } catch (err) {
-          console.error('Failed to fetch quiz details:', err);
-          setError('Failed to fetch quiz details');
+          console.error('Failed to fetch quiz details or check participants:', err);
+          setError('Failed to join quiz');
         } finally {
           setIsLoading(false);
         }
       }
     };
 
-    fetchQuizDetails();
-  }, [code]);
+    fetchQuizAndCheckParticipants();
+  }, [code, user]);
 
-  // WebSocket connection
-  useEffect(() => {
+  const connectWebSocket = (quizCode: string) => {
     const token = localStorage.getItem('token');
-    if (!token || !code || !user) return;
+    if (!token || !user) return;
 
-    console.log('Attempting to connect to WebSocket...');
-    const ws = new WebSocket(`ws://0.0.0.0:8002/ws/quiz/${code}?token=${token}`);
+    console.log('Connecting to WebSocket...');
+    const ws = new WebSocket(`ws://0.0.0.0:8002/ws/quiz/${quizCode}?token=${token}`);
 
     ws.onopen = () => {
       console.log('Connected to quiz room successfully');
@@ -89,9 +102,24 @@ export default function QuizLobby() {
       try {
         console.log('Received WebSocket message:', event.data);
         const data: WebSocketMessage = JSON.parse(event.data);
-        if (data.type === 'room_participants') {
-          console.log('Updating participants:', data.participants);
-          setParticipants(data.participants);
+        
+        switch (data.type) {
+          case 'room_participants':
+            if (data.participants) {
+              console.log('Updating participants:', data.participants);
+              setParticipants(data.participants);
+            }
+            break;
+
+          case 'start_quiz_now':
+            if (quiz) {
+              console.log('Quiz started! Redirecting to quiz page...');
+              router.push(`/quiz/${code}`);
+            }
+            break;
+
+          default:
+            console.log('Unknown message type:', data.type);
         }
       } catch (err) {
         console.error('WebSocket message parsing error:', err);
@@ -116,12 +144,28 @@ export default function QuizLobby() {
     setSocket(ws);
 
     return () => {
-      console.log('Cleaning up WebSocket connection...');
       if (ws.readyState === WebSocket.OPEN) {
         ws.close(1000, 'Component unmounting');
       }
     };
-  }, [code, user]);
+  };
+
+  const handleStartQuiz = async () => {
+    try {
+      if (!socket || socket.readyState !== WebSocket.OPEN) {
+        throw new Error('WebSocket connection not open');
+      }
+
+      const startQuizMessage = {
+        type: 'start_quiz'
+      };
+      socket.send(JSON.stringify(startQuizMessage));
+
+    } catch (err) {
+      console.error('Error starting quiz:', err);
+      setError('Failed to start quiz. Please try again.');
+    }
+  };
 
   if (isLoading) {
     return (
@@ -131,66 +175,78 @@ export default function QuizLobby() {
     );
   }
 
-  if (error || !quiz) {
+  if (error) {
     return (
       <Container>
         <Box sx={{ mt: 4 }}>
-          <Alert severity="error">
-            {error || 'Quiz not found. Please check the code and try again.'}
-          </Alert>
-          <Button
-            sx={{ mt: 2 }}
-            variant="contained"
-            onClick={() => router.push('/lobby')}
-          >
-            Back to Lobby
-          </Button>
+          <Alert severity="error">{error}</Alert>
+          {alreadyJoined && (
+            <Box sx={{ mt: 2, textAlign: 'center' }}>
+              <Button
+                variant="contained"
+                color="primary"
+                onClick={() => router.push('/')}
+              >
+                Back to Home
+              </Button>
+            </Box>
+          )}
         </Box>
       </Container>
     );
   }
 
-  const handleStartQuiz = async () => {
-    try {
-      const response = await fetch(`http://0.0.0.0:8002/api/quizzes/${quiz.id}/start`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
-          'Content-Type': 'application/json'
-        }
-      });
+  if (!quiz) {
+    return (
+      <Container>
+        <Box sx={{ mt: 4 }}>
+          <Alert severity="error">Quiz not found</Alert>
+        </Box>
+      </Container>
+    );
+  }
 
-      if (!response.ok) {
-        throw new Error('Failed to start quiz');
-      }
-
-      if (startQuiz(quiz.id)) {
-        await router.push(`/quiz/${code}`);
-      }
-    } catch (err) {
-      console.error('Error starting quiz:', err);
-      setError('Failed to start quiz. Please try again.');
-    }
-  };
-
-  const currentParticipant = participants.find(p => p.email === user?.email);
-  const isHost = currentParticipant?.is_host || false;
+  const currentParticipant = participants.find(p => p.user_id === user?.id);
+  const isHost = currentParticipant?.user_id === quiz?.created_by || false;
 
   return (
     <Container maxWidth="md">
       <Box sx={{ mt: 4 }}>
-        <Paper elevation={3} sx={{ p: 3 }}>
-          <Typography variant="h4" gutterBottom>
-            Quiz Lobby: {quiz.title}
-          </Typography>
-          
-          {quiz.description && (
-            <Typography variant="body1" color="text.secondary" paragraph>
-              {quiz.description}
-            </Typography>
-          )}
-
+        <Paper elevation={3} sx={{ p: 4 }}>
           <Stack spacing={3}>
+            <Box>
+              <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center' }}>
+                <StarsIcon sx={{ mr: 1 }} />
+                Quiz Information
+              </Typography>
+              <List dense>
+                <ListItem>
+                  <ListItemIcon>
+                    <QuizIcon />
+                  </ListItemIcon>
+                  <ListItemText 
+                    primary={`Number of Questions: ${quiz.questions?.length || 0}`}
+                  />
+                </ListItem>
+                <ListItem>
+                  <ListItemIcon>
+                    <TimerIcon />
+                  </ListItemIcon>
+                  <ListItemText 
+                    primary={`Time Limit: ${quiz.settings?.timeLimit || 0} seconds per question`}
+                  />
+                </ListItem>
+                <ListItem>
+                  <ListItemIcon>
+                    <ShuffleIcon />
+                  </ListItemIcon>
+                  <ListItemText 
+                    primary={`Shuffle Questions: ${quiz.settings?.shuffleQuestions ? 'Yes' : 'No'}`}
+                  />
+                </ListItem>
+              </List>
+            </Box>
+
             <Box>
               <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center' }}>
                 <PersonIcon sx={{ mr: 1 }} />
@@ -198,23 +254,27 @@ export default function QuizLobby() {
               </Typography>
               <List>
                 {participants.map((participant) => (
-                  <ListItem key={participant.id}>
+                  <ListItem
+                    key={participant.user_id}
+                    sx={{
+                      bgcolor: participant.user_id === quiz?.created_by ? 'action.selected' : 'transparent',
+                      borderRadius: 1,
+                    }}
+                  >
                     <ListItemIcon>
-                      <PersonIcon color={participant.is_host ? "primary" : "action"} />
+                      <Avatar sx={{ bgcolor: participant.user_id === quiz?.created_by ? 'primary.main' : 'grey.400' }}>
+                        <PersonIcon />
+                      </Avatar>
                     </ListItemIcon>
-                    <ListItemText 
+                    <ListItemText
                       primary={participant.email}
-                      secondary={participant.is_host ? "Host" : "Participant"}
+                      secondary={
+                        <>
+                          {participant.user_id === quiz?.created_by ? 'Host • ' : ''}
+                          {new Date(participant.connected_at).toLocaleTimeString()}
+                        </>
+                      }
                     />
-                    {participant.is_host && (
-                      <Chip
-                        icon={<StarsIcon />}
-                        label="Host"
-                        color="primary"
-                        variant="outlined"
-                        size="small"
-                      />
-                    )}
                   </ListItem>
                 ))}
               </List>
