@@ -72,7 +72,21 @@ export default function Login() {
         <Typography component="h1" variant="h5">
           Login
         </Typography>
-        <Box component="form" noValidate sx={{ mt: 1 }}>
+        <Box 
+          component="form" 
+          noValidate 
+          sx={{ mt: 1 }}
+          onSubmit={(e) => {
+            e.preventDefault();
+            handleLogin();
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              handleLogin();
+            }
+          }}
+        >
           {message && (
             <Alert severity="success" sx={{ mt: 2, mb: 2 }}>
               {message}

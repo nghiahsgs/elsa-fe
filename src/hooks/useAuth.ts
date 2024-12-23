@@ -33,10 +33,11 @@ export const useAuth = (requireAuth: boolean = true) => {
             router.push('/login');
             return;
           }
+          console.log('Decoded token:', decoded);
 
           // Set user info from token
           setUser({ 
-            id: decoded.sub, // Using email as id for now
+            id: decoded.id, // Using email as id for now
             email: decoded.sub 
           });
         }
