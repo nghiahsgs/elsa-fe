@@ -25,17 +25,27 @@ import { CreateQuizResponse } from '../../services/api';
 interface Participant {
   id: string;
   email: string;
+  is_host: boolean;
+}
+
+interface QuizInfo {
+  id: string;
+  code: string;
+  title: string;
+  description: string;
+  created_by: string;
 }
 
 interface WebSocketMessage {
   type: string;
+  quiz: QuizInfo;
   participants: Participant[];
 }
 
 export default function QuizLobby() {
   const router = useRouter();
   const { code } = router.query;
-  const { user, isAuthenticated } = useAuth();
+  const { user } = useAuth();
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
   const [quiz, setQuiz] = useState<CreateQuizResponse | null>(null);
@@ -45,56 +55,58 @@ export default function QuizLobby() {
 
   // Fetch quiz details
   useEffect(() => {
-    const fetchQuiz = async () => {
+    const fetchQuizDetails = async () => {
       if (typeof code === 'string') {
         try {
           const quizData = await getQuizByCode(code);
           setQuiz(quizData);
         } catch (err) {
+          console.error('Failed to fetch quiz details:', err);
           setError('Failed to fetch quiz details');
-          console.error(err);
         } finally {
           setIsLoading(false);
         }
       }
     };
 
-    if (typeof isAuthenticated === 'boolean' && code) {
-      fetchQuiz();
-    }
-  }, [isAuthenticated, code]);
+    fetchQuizDetails();
+  }, [code]);
 
   // WebSocket connection
   useEffect(() => {
     const token = localStorage.getItem('token');
     if (!token || !code || !user) return;
 
+    console.log('Attempting to connect to WebSocket...');
     const ws = new WebSocket(`ws://0.0.0.0:8002/ws/quiz/${code}?token=${token}`);
 
     ws.onopen = () => {
-      console.log('Connected to quiz room');
+      console.log('Connected to quiz room successfully');
+      setError('');
     };
 
     ws.onmessage = (event) => {
       try {
+        console.log('Received WebSocket message:', event.data);
         const data: WebSocketMessage = JSON.parse(event.data);
         if (data.type === 'room_participants') {
+          console.log('Updating participants:', data.participants);
           setParticipants(data.participants);
         }
       } catch (err) {
-        console.error('WebSocket message error:', err);
+        console.error('WebSocket message parsing error:', err);
       }
     };
 
     ws.onclose = (event) => {
-      console.log('Disconnected from quiz room:', event.reason);
-      // Attempt to reconnect after 5 seconds
-      setTimeout(() => {
-        if (socket) {
-          socket.close();
-          setSocket(null);
-        }
-      }, 5000);
+      console.log('WebSocket closed. Code:', event.code, 'Reason:', event.reason);
+      if (event.code !== 1000) {
+        setTimeout(() => {
+          if (ws.readyState === WebSocket.CLOSED) {
+            setError('Connection lost. Please refresh the page.');
+          }
+        }, 5000);
+      }
     };
 
     ws.onerror = (error) => {
@@ -104,8 +116,9 @@ export default function QuizLobby() {
     setSocket(ws);
 
     return () => {
+      console.log('Cleaning up WebSocket connection...');
       if (ws.readyState === WebSocket.OPEN) {
-        ws.close();
+        ws.close(1000, 'Component unmounting');
       }
     };
   }, [code, user]);
@@ -137,13 +150,31 @@ export default function QuizLobby() {
     );
   }
 
-  const handleStartQuiz = () => {
-    if (startQuiz(code as string)) {
-      router.push(`/quiz/${code}`);
+  const handleStartQuiz = async () => {
+    try {
+      const response = await fetch(`http://0.0.0.0:8002/api/quizzes/${quiz.id}/start`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to start quiz');
+      }
+
+      if (startQuiz(quiz.id)) {
+        await router.push(`/quiz/${code}`);
+      }
+    } catch (err) {
+      console.error('Error starting quiz:', err);
+      setError('Failed to start quiz. Please try again.');
     }
   };
 
-  const isHost = user?.email === quiz.createdBy?.email;
+  const currentParticipant = participants.find(p => p.email === user?.email);
+  const isHost = currentParticipant?.is_host || false;
 
   return (
     <Container maxWidth="md">
@@ -162,30 +193,6 @@ export default function QuizLobby() {
           <Stack spacing={3}>
             <Box>
               <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center' }}>
-                <StarsIcon sx={{ mr: 1 }} />
-                Quiz Settings
-              </Typography>
-              <List dense>
-                <ListItem>
-                  <ListItemText 
-                    primary={`Time Limit: ${quiz.settings.timeLimit} seconds`}
-                  />
-                </ListItem>
-                <ListItem>
-                  <ListItemText 
-                    primary={`Questions: ${quiz.questions.length}`}
-                  />
-                </ListItem>
-                <ListItem>
-                  <ListItemText 
-                    primary={`Shuffle Questions: ${quiz.settings.shuffleQuestions ? 'Yes' : 'No'}`}
-                  />
-                </ListItem>
-              </List>
-            </Box>
-
-            <Box>
-              <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center' }}>
                 <PersonIcon sx={{ mr: 1 }} />
                 Participants ({participants.length})
               </Typography>
@@ -193,13 +200,13 @@ export default function QuizLobby() {
                 {participants.map((participant) => (
                   <ListItem key={participant.id}>
                     <ListItemIcon>
-                      <PersonIcon color={participant.email === quiz.createdBy?.email ? "primary" : "action"} />
+                      <PersonIcon color={participant.is_host ? "primary" : "action"} />
                     </ListItemIcon>
                     <ListItemText 
                       primary={participant.email}
-                      secondary={participant.email === quiz.createdBy?.email ? "Host" : "Participant"}
+                      secondary={participant.is_host ? "Host" : "Participant"}
                     />
-                    {participant.email === quiz.createdBy?.email && (
+                    {participant.is_host && (
                       <Chip
                         icon={<StarsIcon />}
                         label="Host"
@@ -214,29 +221,21 @@ export default function QuizLobby() {
             </Box>
 
             <Box sx={{ display: 'flex', justifyContent: 'center', mt: 2 }}>
-              {isHost && !quiz.isStarted ? (
-                <Button
-                  variant="contained"
-                  color="primary"
-                  size="large"
-                  onClick={handleStartQuiz}
-                  sx={{
-                    minWidth: 200,
-                    transition: 'transform 0.2s',
-                    '&:hover': {
-                      transform: 'scale(1.02)',
-                    }
-                  }}
-                >
-                  Start Quiz
-                </Button>
-              ) : (
-                <Alert severity="info" sx={{ width: '100%' }}>
-                  {quiz.isStarted ? 
-                    "Quiz has already started!" : 
-                    "Waiting for host to start the quiz..."}
-                </Alert>
-              )}
+              <Button
+                variant="contained"
+                color="primary"
+                size="large"
+                onClick={handleStartQuiz}
+                sx={{
+                  minWidth: 200,
+                  transition: 'transform 0.2s',
+                  '&:hover': {
+                    transform: 'scale(1.02)',
+                  }
+                }}
+              >
+                Start Quiz
+              </Button>
             </Box>
           </Stack>
         </Paper>
