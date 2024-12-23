@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useRouter } from 'next/router';
 import {
   Container,
@@ -15,23 +15,16 @@ import {
 import LogoutIcon from '@mui/icons-material/Logout';
 import { useAuthStore } from '../store/authStore';
 import { useQuizStore } from '../store/quizStore';
+import { useAuth } from '../hooks/useAuth';
 
 export default function Lobby() {
   const router = useRouter();
-  const user = useAuthStore(state => state.user);
+  const { user } = useAuth(); // This will handle auth check and redirect
   const logout = useAuthStore(state => state.logout);
   const joinQuiz = useQuizStore(state => state.joinQuiz);
-  const [isClient, setIsClient] = useState(false);
   const [openJoinDialog, setOpenJoinDialog] = useState(false);
   const [quizCode, setQuizCode] = useState('');
   const [error, setError] = useState('');
-
-  useEffect(() => {
-    setIsClient(true);
-    if (!user) {
-      router.push('/login');
-    }
-  }, [user]);
 
   const handleJoinQuiz = () => {
     if (user && joinQuiz(quizCode, user)) {
@@ -46,7 +39,8 @@ export default function Lobby() {
     router.push('/login');
   };
 
-  if (!isClient || !user) {
+  // No need for isClient check anymore as useAuth handles it
+  if (!user) {
     return null;
   }
 
@@ -81,7 +75,7 @@ export default function Lobby() {
           gap: 3
         }}>
           <Typography variant="h4" component="h1" gutterBottom>
-            {user.email}'s Dashboard
+            {user?.email}'s Dashboard
           </Typography>
 
           <Stack spacing={2} direction="row">

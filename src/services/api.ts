@@ -1,4 +1,4 @@
-const BASE_URL = 'http://0.0.0.0:8001/api';
+const BASE_URL = 'http://0.0.0.0:8002/api';
 
 export interface SignupRequest {
   email: string;
@@ -66,6 +66,68 @@ export const loginUser = async (data: LoginRequest): Promise<AuthResponse> => {
     return result;
   } catch (error) {
     console.error('Login error:', error);
+    throw error;
+  }
+};
+
+export interface QuizQuestion {
+  text: string;
+  options: string[];
+  correctAnswer: number;
+  score: number;
+}
+
+export interface QuizSettings {
+  timeLimit: number;
+  shuffleQuestions: boolean;
+}
+
+export interface CreateQuizRequest {
+  title: string;
+  description: string;
+  questions: QuizQuestion[];
+  settings: QuizSettings;
+}
+
+export interface CreateQuizResponse {
+  id: string;
+  code: string;
+  createdAt: string;
+  createdBy: {
+    id: string;
+    email: string;
+  };
+  title: string;
+  description: string;
+  questions: QuizQuestion[];
+  settings: QuizSettings;
+}
+
+export const createQuiz = async (data: CreateQuizRequest): Promise<CreateQuizResponse> => {
+  try {
+    const token = localStorage.getItem('token');
+    if (!token) {
+      throw new Error('No authentication token found');
+    }
+
+    const response = await fetch(`${BASE_URL}/quizzes`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify(data),
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to create quiz');
+    }
+
+    const result = await response.json();
+    return result;
+  } catch (error) {
+    console.error('Create quiz error:', error);
     throw error;
   }
 };

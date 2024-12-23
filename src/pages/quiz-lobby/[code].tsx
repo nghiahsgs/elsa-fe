@@ -16,13 +16,13 @@ import {
 } from '@mui/material';
 import PersonIcon from '@mui/icons-material/Person';
 import StarsIcon from '@mui/icons-material/Stars';
-import { useAuthStore } from '../../store/authStore';
 import { useQuizStore } from '../../store/quizStore';
+import { useAuth } from '../../hooks/useAuth';
 
 export default function QuizLobby() {
   const router = useRouter();
   const { code } = router.query;
-  const user = useAuthStore(state => state.user);
+  const { user } = useAuth();
   const quizzes = useQuizStore(state => state.quizzes);
   const startQuiz = useQuizStore(state => state.startQuiz);
   const quiz = quizzes.find(q => q.code === code);
