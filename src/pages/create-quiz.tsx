@@ -110,9 +110,9 @@ export default function CreateQuiz() {
         }
       });
 
-      setSuccess(`Quiz created successfully! Share code: ${response.code}`);
+      setSuccess(`Quiz created successfully! Redirecting to quiz lobby...`);
       setTimeout(() => {
-        router.push('/lobby');
+        router.push(`/quiz-lobby/${response.code}`);
       }, 2000);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create quiz');

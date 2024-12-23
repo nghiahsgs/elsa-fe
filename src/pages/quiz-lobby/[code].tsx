@@ -1,135 +1,170 @@
-import { useEffect, useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import {
   Container,
   Box,
-  Button,
   Typography,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  Paper,
-  Chip
+  List,
+  ListItem,
+  ListItemIcon,
+  ListItemText,
+  Button,
+  CircularProgress,
+  Alert,
+  Stack,
+  Paper
 } from '@mui/material';
 import PersonIcon from '@mui/icons-material/Person';
 import StarsIcon from '@mui/icons-material/Stars';
 import { useQuizStore } from '../../store/quizStore';
 import { useAuth } from '../../hooks/useAuth';
+import { getQuizByCode } from '../../services/api';
+import { CreateQuizResponse } from '../../services/api';
 
 export default function QuizLobby() {
   const router = useRouter();
   const { code } = router.query;
-  const { user } = useAuth();
-  const quizzes = useQuizStore(state => state.quizzes);
+  const { user, isAuthenticated } = useAuth();
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [quiz, setQuiz] = useState<CreateQuizResponse | null>(null);
   const startQuiz = useQuizStore(state => state.startQuiz);
-  const quiz = quizzes.find(q => q.code === code);
-  const [isClient, setIsClient] = useState(false);
 
   useEffect(() => {
-    setIsClient(true);
-    if (!user) {
-      router.push('/login');
-    }
-  }, [user]);
+    const fetchQuiz = async () => {
+      if (typeof code === 'string') {
+        try {
+          const quizData = await getQuizByCode(code);
+          setQuiz(quizData);
+        } catch (err) {
+          setError('Failed to fetch quiz details');
+          console.error(err);
+        } finally {
+          setIsLoading(false);
+        }
+      }
+    };
 
-  useEffect(() => {
-    if (quiz?.isStarted) {
-      router.push('/game');
+    // Wait for authentication and code to be available
+    if (typeof isAuthenticated === 'boolean' && code) {
+      fetchQuiz();
     }
-  }, [quiz?.isStarted]);
+  }, [isAuthenticated, code]);
 
-  if (!isClient || !user || !quiz) {
-    return null;
+  if (isLoading) {
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
+        <CircularProgress />
+      </Box>
+    );
   }
 
-  const isCreator = quiz.creatorId === user.id;
+  if (error || !quiz) {
+    return (
+      <Container>
+        <Box sx={{ mt: 4 }}>
+          <Alert severity="error">
+            {error || 'Quiz not found. Please check the code and try again.'}
+          </Alert>
+          <Button
+            sx={{ mt: 2 }}
+            variant="contained"
+            onClick={() => router.push('/lobby')}
+          >
+            Back to Lobby
+          </Button>
+        </Box>
+      </Container>
+    );
+  }
 
   const handleStartQuiz = () => {
-    if (isCreator) {
-      startQuiz(quiz.id);
+    if (startQuiz(code as string)) {
+      router.push(`/quiz/${code}`);
     }
   };
 
   return (
-    <Container maxWidth="sm">
-      <Box sx={{ mt: 8, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3 }}>
-        <Typography variant="h4">Quiz Lobby</Typography>
-        
-        <Box sx={{ 
-          display: 'flex', 
-          alignItems: 'center', 
-          gap: 2,
-          bgcolor: 'primary.main',
-          color: 'white',
-          px: 3,
-          py: 1,
-          borderRadius: 2
-        }}>
-          <Typography variant="h6">Room Code:</Typography>
-          <Typography variant="h6" sx={{ fontWeight: 'bold', letterSpacing: 2 }}>
-            {code}
+    <Container maxWidth="md">
+      <Box sx={{ mt: 4 }}>
+        <Paper elevation={3} sx={{ p: 3 }}>
+          <Typography variant="h4" gutterBottom>
+            Quiz Lobby: {quiz.title}
           </Typography>
-        </Box>
+          
+          {quiz.description && (
+            <Typography variant="body1" color="text.secondary" paragraph>
+              {quiz.description}
+            </Typography>
+          )}
 
-        <TableContainer component={Paper} sx={{ width: '100%' }}>
-          <Table>
-            <TableHead>
-              <TableRow>
-                <TableCell>Player</TableCell>
-                <TableCell align="right">Status</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {quiz.participants.map((participant) => (
-                <TableRow
-                  key={participant.id}
-                  sx={{ '&:last-child td, &:last-child th': { border: 0 } }}
-                >
-                  <TableCell component="th" scope="row">
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <PersonIcon color="action" />
-                      <Typography>
-                        {participant.username}
-                      </Typography>
-                    </Box>
-                  </TableCell>
-                  <TableCell align="right">
-                    {participant.id === quiz.creatorId ? (
-                      <Chip
-                        icon={<StarsIcon />}
-                        label="Host"
-                        color="primary"
-                        variant="outlined"
-                      />
-                    ) : (
-                      <Chip
-                        label="Player"
-                        color="default"
-                        variant="outlined"
-                      />
-                    )}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </TableContainer>
+          <Stack spacing={3}>
+            <Box>
+              <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center' }}>
+                <StarsIcon sx={{ mr: 1 }} />
+                Quiz Settings
+              </Typography>
+              <List dense>
+                <ListItem>
+                  <ListItemText 
+                    primary={`Time Limit: ${quiz.settings.timeLimit} seconds`}
+                  />
+                </ListItem>
+                <ListItem>
+                  <ListItemText 
+                    primary={`Questions: ${quiz.questions.length}`}
+                  />
+                </ListItem>
+                <ListItem>
+                  <ListItemText 
+                    primary={`Shuffle Questions: ${quiz.settings.shuffleQuestions ? 'Yes' : 'No'}`}
+                  />
+                </ListItem>
+              </List>
+            </Box>
 
-        {isCreator && (
-          <Button
-            variant="contained"
-            color="primary"
-            fullWidth
-            size="large"
-            onClick={handleStartQuiz}
-            sx={{ mt: 2 }}
-          >
-            Start Quiz
-          </Button>
-        )}
+            <Box>
+              <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center' }}>
+                <PersonIcon sx={{ mr: 1 }} />
+                Participants
+              </Typography>
+              <List dense>
+                {quiz.participants?.map((participant, index) => (
+                  <ListItem key={index}>
+                    <ListItemIcon>
+                      <PersonIcon />
+                    </ListItemIcon>
+                    <ListItemText primary={participant.email} />
+                  </ListItem>
+                ))}
+              </List>
+            </Box>
+
+            {user?.email === quiz.createdBy?.email && !quiz.isStarted && (
+              <Button
+                variant="contained"
+                color="primary"
+                size="large"
+                onClick={handleStartQuiz}
+                sx={{
+                  mt: 2,
+                  transition: 'transform 0.2s',
+                  '&:hover': {
+                    transform: 'scale(1.02)',
+                  }
+                }}
+              >
+                Start Quiz
+              </Button>
+            )}
+
+            {quiz.isStarted && (
+              <Alert severity="info">
+                Quiz has already started!
+              </Alert>
+            )}
+          </Stack>
+        </Paper>
       </Box>
     </Container>
   );

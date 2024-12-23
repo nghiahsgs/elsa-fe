@@ -131,3 +131,30 @@ export const createQuiz = async (data: CreateQuizRequest): Promise<CreateQuizRes
     throw error;
   }
 };
+
+export const getQuizByCode = async (code: string): Promise<CreateQuizResponse> => {
+  try {
+    const token = localStorage.getItem('token');
+    if (!token) {
+      throw new Error('No authentication token found');
+    }
+
+    const response = await fetch(`${BASE_URL}/quizzes/code/${code}`, {
+      method: 'GET',
+      headers: {
+        'Accept': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to fetch quiz');
+    }
+
+    const result = await response.json();
+    return result;
+  } catch (error) {
+    console.error('Get quiz error:', error);
+    throw error;
+  }
+};
