@@ -10,12 +10,14 @@ import {
   AppBar,
   Toolbar,
   IconButton,
-  Stack
+  Stack,
+  CircularProgress
 } from '@mui/material';
 import LogoutIcon from '@mui/icons-material/Logout';
 import { useAuthStore } from '../store/authStore';
 import { useQuizStore } from '../store/quizStore';
 import { useAuth } from '../hooks/useAuth';
+import { getQuizByCode } from '../services/api';
 
 export default function Lobby() {
   const router = useRouter();
@@ -25,14 +27,27 @@ export default function Lobby() {
   const [openJoinDialog, setOpenJoinDialog] = useState(false);
   const [quizCode, setQuizCode] = useState('');
   const [error, setError] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
 
   console.log('Current user:', user);
 
-  const handleJoinQuiz = () => {
-    if (user && joinQuiz(quizCode, user)) {
-      router.push(`/quiz-lobby/${quizCode}`);
-    } else {
+  const handleJoinQuiz = async () => {
+    if (!user) return;
+    
+    setIsLoading(true);
+    setError('');
+    
+    try {
+      const quiz = await getQuizByCode(quizCode);
+      if (quiz) {
+        joinQuiz(quizCode, user);
+        router.push(`/quiz-lobby/${quizCode}`);
+      }
+    } catch (err) {
+      console.error('Error joining quiz:', err);
       setError('Invalid quiz code');
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -131,8 +146,8 @@ export default function Lobby() {
             />
             <Box sx={{ mt: 2, display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
               <Button onClick={() => setOpenJoinDialog(false)}>Cancel</Button>
-              <Button variant="contained" onClick={handleJoinQuiz}>
-                Join
+              <Button variant="contained" onClick={handleJoinQuiz} disabled={isLoading}>
+                {isLoading ? <CircularProgress size={24} /> : 'Join'}
               </Button>
             </Box>
           </Box>
