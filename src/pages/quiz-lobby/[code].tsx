@@ -132,9 +132,13 @@ export default function QuizLobby() {
 
         const data = await response.json();
         const existingParticipant = data.participants.find(p => p.email === user.email);
+        console.log({existingParticipant});
+        console.log({data});
         if (existingParticipant) {
           setAlertMessage('You have already joined this quiz in another tab. Please close this tab and return to your existing quiz session.');
           setShowAlert(true);
+          alert('You have already joined this quiz in another tab. Please close this tab and return to your existing quiz session.');
+          router.push('/lobby');
           return;
         }
 
