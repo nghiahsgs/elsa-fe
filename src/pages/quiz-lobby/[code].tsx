@@ -484,7 +484,7 @@ export default function QuizLobby() {
               </Stack>
             ) : (
               <Box>
-                {currentQuestion ? (
+                {!isQuizFinished && currentQuestion ? (
                   <Box>
                     <Typography variant="h5" gutterBottom>
                       {currentQuestion.text}
@@ -512,13 +512,13 @@ export default function QuizLobby() {
                       ))}
                     </Stack>
                   </Box>
-                ) : (
+                ) : !isQuizFinished ? (
                   <Box sx={{ textAlign: 'center', py: 4 }}>
                     <Typography variant="h6">
                       Waiting for the next question...
                     </Typography>
                   </Box>
-                )}
+                ) : null}
 
                 {/* Leaderboard */}
                 <Box sx={{ mt: 4 }}>
