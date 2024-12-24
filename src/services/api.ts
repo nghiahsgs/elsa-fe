@@ -1,4 +1,4 @@
-const BASE_URL = 'http://0.0.0.0:8002/api';
+const BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
 
 export interface SignupRequest {
   email: string;
