@@ -29,7 +29,8 @@ export default function Lobby() {
       setError('Please enter a quiz code');
       return;
     }
-    router.push(`/quiz-lobby/${quizCode.trim()}`);
+    // router.push(`/quiz-lobby/${quizCode.trim()}`);
+    window.location.href = `/quiz-lobby/${quizCode.trim()}`;
   };
 
   const handleLogout = () => {
