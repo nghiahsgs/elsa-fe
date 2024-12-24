@@ -25,9 +25,14 @@ import StarsIcon from '@mui/icons-material/Stars';
 import QuizIcon from '@mui/icons-material/Quiz';
 import TimerIcon from '@mui/icons-material/Timer';
 import ShuffleIcon from '@mui/icons-material/Shuffle';
+import { useWindowSize } from 'react-use';
+import Confetti from 'react-confetti';
 import { useQuizStore } from '../../store/quizStore';
 import { useAuth } from '../../hooks/useAuth';
-import { getQuizByCode, getQuizParticipants } from '../../services/api';
+import {
+  getQuizByCode,
+  getQuizParticipants
+} from '../../services/api';
 
 interface Participant {
   user_id: string;
@@ -51,6 +56,7 @@ interface WebSocketMessage {
   quiz_id?: string;
   leaderboard?: LeaderboardEntry[];
   question?: Question;
+  questions?: Question[];
 }
 
 interface LeaderboardEntry {
@@ -70,6 +76,7 @@ export default function QuizLobby() {
   const router = useRouter();
   const { code } = router.query;
   const { user } = useAuth();
+  const { width, height } = useWindowSize();
   const [socket, setSocket] = useState<WebSocket | null>(null);
   const [error, setError] = useState('');
   const [quiz, setQuiz] = useState<QuizInfo | null>(null);
@@ -80,10 +87,12 @@ export default function QuizLobby() {
   const [currentQuestion, setCurrentQuestion] = useState<Question | null>(null);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [selectedAnswer, setSelectedAnswer] = useState<number | null>(null);
+  const [questions, setQuestions] = useState<Question[]>([]);
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
   const [isAnswerSubmitted, setIsAnswerSubmitted] = useState(false);
   const [showAlert, setShowAlert] = useState(false);
   const [alertMessage, setAlertMessage] = useState('');
+  const [isQuizFinished, setIsQuizFinished] = useState(false);
 
   const handleAlertClose = () => {
     setShowAlert(false);
@@ -98,19 +107,20 @@ export default function QuizLobby() {
         setIsLoading(true);
 
         // First get quiz details
-        const quizData = await getQuizByCode(code as string);
+        const fetchedQuizData = await getQuizByCode(code as string);
         
         // Check if quiz is already running
-        if (quizData.status === 'running') {
+        if (fetchedQuizData.status === 'running') {
           setAlertMessage('The quiz has already started. You cannot join at this time.');
           setShowAlert(true);
           return;
         }
 
-        setQuizData(quizData); // Store the full quiz data
+        setQuizData(fetchedQuizData); // Store the full quiz data
+        setQuiz(fetchedQuizData); // Also update quiz state
         
         // Then check participants
-        const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/quizzes/${quizData.id}/participants`, {
+        const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/quizzes/${fetchedQuizData.id}/participants`, {
           headers: {
             'Authorization': `Bearer ${localStorage.getItem('token')}`,
           },
@@ -129,7 +139,6 @@ export default function QuizLobby() {
         }
 
         // If we get here, user can join
-        setQuiz(quizData);
         connectWebSocket(code as string);
       } catch (err: any) {
         console.error('Failed to check access:', err);
@@ -214,33 +223,33 @@ export default function QuizLobby() {
 
           case 'start_quiz_now':
             console.log('Quiz started!');
-            console.log({quizData});
             setIsQuizStarted(true);
-            if (quizData && quizData.questions) {
-              // If questions should be shuffled, shuffle them
-              if (quizData.settings?.shuffleQuestions) {
-                const shuffledQuestions = [...quizData.questions].sort(() => Math.random() - 0.5);
-                setQuizData({...quizData, questions: shuffledQuestions});
-              }
+            if (data.questions && data.questions.length > 0) {
+              console.log('Questions received:', data.questions);
+              setQuestions(data.questions);
               // Set the first question
-              setCurrentQuestion(quizData.questions[0]);
+              setCurrentQuestion(data.questions[0]);
               setCurrentQuestionIndex(0);
+              setSelectedAnswer(null);
+              setIsAnswerSubmitted(false);
+            } else {
+              console.error('No questions received in start_quiz_now event');
             }
             if (data.leaderboard) {
               setLeaderboard(data.leaderboard);
             }
             break;
 
-          case 'question':
-            if (data.question) {
-              console.log('New question received:', data.question);
-              setCurrentQuestion(data.question);
-              setSelectedAnswer(null);
-              setIsAnswerSubmitted(false);
+          case 'leaderboard_update':
+            if (data.leaderboard) {
+              console.log('Updating leaderboard:', data.leaderboard);
+              setLeaderboard(data.leaderboard);
             }
             break;
 
-          case 'answer_result':
+          case 'end_quiz_now':
+            console.log('Quiz ended!');
+            setIsQuizFinished(true);
             if (data.leaderboard) {
               setLeaderboard(data.leaderboard);
             }
@@ -300,31 +309,40 @@ export default function QuizLobby() {
       return;
     }
 
-    setSelectedAnswer(answerIndex);
-    setIsAnswerSubmitted(true);
+    try {
+      const submitAnswerMessage = {
+        type: 'submit_answer',
+        question_id: currentQuestion.id,
+        answer: answerIndex
+      };
+      socket.send(JSON.stringify(submitAnswerMessage));
+      setSelectedAnswer(answerIndex);
+      setIsAnswerSubmitted(true);
 
-    const message = {
-      type: 'submit_answer',
-      question_id: currentQuestion.id,
-      answer: answerIndex
-    };
-    socket.send(JSON.stringify(message));
-
-    // Move to next question after a short delay
-    setTimeout(() => {
-      if (quizData && quizData.questions) {
+      // Move to next question after a short delay
+      setTimeout(() => {
         const nextIndex = currentQuestionIndex + 1;
-        if (nextIndex < quizData.questions.length) {
-          setCurrentQuestion(quizData.questions[nextIndex]);
+        if (nextIndex < questions.length) {
+          setCurrentQuestion(questions[nextIndex]);
           setCurrentQuestionIndex(nextIndex);
           setSelectedAnswer(null);
           setIsAnswerSubmitted(false);
-        } else {
-          // Quiz finished
-          setCurrentQuestion(null);
         }
-      }
-    }, 1000); // Show answer for 1 second before moving to next question
+
+        // Check if this was the last question
+        if (nextIndex === questions.length) {
+          console.log('Last question answered, sending end_quiz event');
+          const endQuizMessage = {
+            type: 'end_quiz'
+          };
+          socket.send(JSON.stringify(endQuizMessage));
+        }
+      }, 1000); // Show answer for 1 second before moving to next question
+
+    } catch (err) {
+      console.error('Error submitting answer:', err);
+      setError('Failed to submit answer. Please try again.');
+    }
   };
 
   if (isLoading) {
@@ -359,176 +377,173 @@ export default function QuizLobby() {
   const isHost = currentParticipant?.user_id === quiz?.created_by || false;
 
   return (
-    <Container maxWidth="md">
-      <Dialog
-        open={showAlert}
-        onClose={handleAlertClose}
-        aria-labelledby="alert-dialog-title"
-        aria-describedby="alert-dialog-description"
-      >
-        <DialogTitle id="alert-dialog-title">
-          Notification
-        </DialogTitle>
-        <DialogContent>
-          <DialogContentText id="alert-dialog-description">
-            {alertMessage}
-          </DialogContentText>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={handleAlertClose} autoFocus>
-            OK
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      <Box sx={{ mt: 4 }}>
-        {!isQuizStarted ? (
-          <Paper elevation={3} sx={{ p: 4 }}>
-            <Stack spacing={3}>
-              <Box>
-                <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center' }}>
-                  <StarsIcon sx={{ mr: 1 }} />
-                  Quiz Information
+    <Container maxWidth="md" sx={{ py: 4 }}>
+      {isLoading ? (
+        <Box display="flex" justifyContent="center">
+          <CircularProgress />
+        </Box>
+      ) : error ? (
+        <Alert severity="error">{error}</Alert>
+      ) : (
+        <>
+          {isQuizFinished && <Confetti width={width} height={height} />}
+          
+          <Paper elevation={3} sx={{ p: 3, mb: 3 }}>
+            <Typography variant="h4" gutterBottom>
+              {quiz?.title}
+              {isQuizFinished && (
+                <Typography variant="h5" color="primary" sx={{ mt: 2 }}>
+                  Game Finished! 🎉
                 </Typography>
-                <List dense>
-                  <ListItem>
-                    <ListItemIcon>
-                      <QuizIcon />
-                    </ListItemIcon>
-                    <ListItemText 
-                      primary={`Number of Questions: ${quiz.questions?.length || 0}`}
-                    />
-                  </ListItem>
-                  <ListItem>
-                    <ListItemIcon>
-                      <TimerIcon />
-                    </ListItemIcon>
-                    <ListItemText 
-                      primary={`Time Limit: ${quiz.settings?.timeLimit || 0} seconds per question`}
-                    />
-                  </ListItem>
-                  <ListItem>
-                    <ListItemIcon>
-                      <ShuffleIcon />
-                    </ListItemIcon>
-                    <ListItemText 
-                      primary={`Shuffle Questions: ${quiz.settings?.shuffleQuestions ? 'Yes' : 'No'}`}
-                    />
-                  </ListItem>
-                </List>
-              </Box>
-
-              <Box>
-                <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center' }}>
-                  <PersonIcon sx={{ mr: 1 }} />
-                  Participants ({participants.length})
-                </Typography>
-                <List>
-                  {participants.map((participant) => (
-                    <ListItem
-                      key={participant.user_id}
-                      sx={{
-                        bgcolor: participant.user_id === quiz?.created_by ? 'action.selected' : 'transparent',
-                        borderRadius: 1,
-                      }}
-                    >
+              )}
+            </Typography>
+            {!isQuizStarted ? (
+              <Stack spacing={3}>
+                <Box>
+                  <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center' }}>
+                    <StarsIcon sx={{ mr: 1 }} />
+                    Quiz Information
+                  </Typography>
+                  <List dense>
+                    <ListItem>
                       <ListItemIcon>
-                        <Avatar sx={{ bgcolor: participant.user_id === quiz?.created_by ? 'primary.main' : 'grey.400' }}>
-                          <PersonIcon />
-                        </Avatar>
+                        <QuizIcon />
                       </ListItemIcon>
-                      <ListItemText
-                        primary={participant.email}
-                        secondary={
-                          participant.user_id === quiz?.created_by ? 'Host' : null
-                        }
+                      <ListItemText 
+                        primary={`Number of Questions: ${quiz.questions?.length || 0}`}
                       />
                     </ListItem>
-                  ))}
-                </List>
-              </Box>
-
-              {isHost && (
-                <Box sx={{ display: 'flex', justifyContent: 'center', mt: 2 }}>
-                  <Button
-                    variant="contained"
-                    color="primary"
-                    size="large"
-                    onClick={handleStartQuiz}
-                    sx={{
-                      minWidth: 200,
-                      transition: 'transform 0.2s',
-                      '&:hover': {
-                        transform: 'scale(1.02)',
-                      }
-                    }}
-                  >
-                    Start Quiz
-                  </Button>
+                    <ListItem>
+                      <ListItemIcon>
+                        <TimerIcon />
+                      </ListItemIcon>
+                      <ListItemText 
+                        primary={`Time Limit: ${quiz.settings?.timeLimit || 0} seconds per question`}
+                      />
+                    </ListItem>
+                    <ListItem>
+                      <ListItemIcon>
+                        <ShuffleIcon />
+                      </ListItemIcon>
+                      <ListItemText 
+                        primary={`Shuffle Questions: ${quiz.settings?.shuffleQuestions ? 'Yes' : 'No'}`}
+                      />
+                    </ListItem>
+                  </List>
                 </Box>
-              )}
-            </Stack>
-          </Paper>
-        ) : (
-          <Paper elevation={3} sx={{ p: 4 }}>
-            {currentQuestion ? (
-              <Box>
-                <Typography variant="h5" gutterBottom>
-                  {currentQuestion.text}
-                </Typography>
-                <Stack spacing={2} sx={{ mt: 3 }}>
-                  {currentQuestion.options.map((option, index) => (
+
+                <Box>
+                  <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center' }}>
+                    <PersonIcon sx={{ mr: 1 }} />
+                    Participants ({participants.length})
+                  </Typography>
+                  <List>
+                    {participants.map((participant) => (
+                      <ListItem
+                        key={participant.user_id}
+                        sx={{
+                          bgcolor: participant.user_id === quiz?.created_by ? 'action.selected' : 'transparent',
+                          borderRadius: 1,
+                        }}
+                      >
+                        <ListItemIcon>
+                          <Avatar sx={{ bgcolor: participant.user_id === quiz?.created_by ? 'primary.main' : 'grey.400' }}>
+                            <PersonIcon />
+                          </Avatar>
+                        </ListItemIcon>
+                        <ListItemText
+                          primary={participant.email}
+                          secondary={
+                            participant.user_id === quiz?.created_by ? 'Host' : null
+                          }
+                        />
+                      </ListItem>
+                    ))}
+                  </List>
+                </Box>
+
+                {isHost && (
+                  <Box sx={{ display: 'flex', justifyContent: 'center', mt: 2 }}>
                     <Button
-                      key={index}
-                      variant={selectedAnswer === index ? "contained" : "outlined"}
-                      onClick={() => handleAnswerSubmit(index)}
-                      disabled={isAnswerSubmitted}
+                      variant="contained"
+                      color="primary"
+                      size="large"
+                      onClick={handleStartQuiz}
                       sx={{
-                        justifyContent: 'flex-start',
-                        textAlign: 'left',
-                        py: 2,
-                        px: 3,
+                        minWidth: 200,
                         transition: 'transform 0.2s',
                         '&:hover': {
                           transform: 'scale(1.02)',
                         }
                       }}
                     >
-                      {option}
+                      Start Quiz
                     </Button>
-                  ))}
-                </Stack>
-              </Box>
+                  </Box>
+                )}
+              </Stack>
             ) : (
-              <Box sx={{ textAlign: 'center', py: 4 }}>
-                <Typography variant="h6">
-                  Waiting for the next question...
-                </Typography>
+              <Box>
+                {currentQuestion ? (
+                  <Box>
+                    <Typography variant="h5" gutterBottom>
+                      {currentQuestion.text}
+                    </Typography>
+                    <Stack spacing={2} sx={{ mt: 3 }}>
+                      {currentQuestion.options.map((option, index) => (
+                        <Button
+                          key={index}
+                          variant={selectedAnswer === index ? "contained" : "outlined"}
+                          onClick={() => handleAnswerSubmit(index)}
+                          disabled={isAnswerSubmitted}
+                          sx={{
+                            justifyContent: 'flex-start',
+                            textAlign: 'left',
+                            py: 2,
+                            px: 3,
+                            transition: 'transform 0.2s',
+                            '&:hover': {
+                              transform: 'scale(1.02)',
+                            }
+                          }}
+                        >
+                          {option}
+                        </Button>
+                      ))}
+                    </Stack>
+                  </Box>
+                ) : (
+                  <Box sx={{ textAlign: 'center', py: 4 }}>
+                    <Typography variant="h6">
+                      Waiting for the next question...
+                    </Typography>
+                  </Box>
+                )}
+
+                {/* Leaderboard */}
+                <Box sx={{ mt: 4 }}>
+                  <Typography variant="h6" gutterBottom>
+                    Leaderboard
+                  </Typography>
+                  <List>
+                    {leaderboard.sort((a, b) => b.score - a.score).map((entry, index) => (
+                      <ListItem key={entry.user_id}>
+                        <ListItemIcon>
+                          <Typography variant="h6">#{index + 1}</Typography>
+                        </ListItemIcon>
+                        <ListItemText
+                          primary={entry.email}
+                          secondary={`Score: ${entry.score}`}
+                        />
+                      </ListItem>
+                    ))}
+                  </List>
+                </Box>
               </Box>
             )}
-
-            {/* Leaderboard */}
-            <Box sx={{ mt: 4 }}>
-              <Typography variant="h6" gutterBottom>
-                Leaderboard
-              </Typography>
-              <List>
-                {leaderboard.sort((a, b) => b.score - a.score).map((entry, index) => (
-                  <ListItem key={entry.user_id}>
-                    <ListItemIcon>
-                      <Typography variant="h6">#{index + 1}</Typography>
-                    </ListItemIcon>
-                    <ListItemText
-                      primary={entry.email}
-                      secondary={`Score: ${entry.score}`}
-                    />
-                  </ListItem>
-                ))}
-              </List>
-            </Box>
           </Paper>
-        )}
-      </Box>
+        </>
+      )}
     </Container>
   );
 }

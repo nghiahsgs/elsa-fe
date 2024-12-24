@@ -101,6 +101,7 @@ export interface CreateQuizResponse {
   description: string;
   questions: QuizQuestion[];
   settings: QuizSettings;
+  status: 'idle' | 'running';
 }
 
 export const createQuiz = async (data: CreateQuizRequest): Promise<CreateQuizResponse> => {
