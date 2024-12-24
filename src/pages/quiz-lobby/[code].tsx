@@ -111,8 +111,9 @@ export default function QuizLobby() {
         
         // Check if quiz is already running
         if (fetchedQuizData.status === 'running') {
-          setAlertMessage('The quiz has already started. You cannot join at this time.');
-          setShowAlert(true);
+          // setAlertMessage('The quiz has already started. You cannot join at this time.');
+          alert('The quiz has already started. You cannot join at this time.');
+          router.push('/lobby');
           return;
         }
 
@@ -135,8 +136,8 @@ export default function QuizLobby() {
         console.log({existingParticipant});
         console.log({data});
         if (existingParticipant) {
-          setAlertMessage('You have already joined this quiz in another tab. Please close this tab and return to your existing quiz session.');
-          setShowAlert(true);
+          // setAlertMessage('You have already joined this quiz in another tab. Please close this tab and return to your existing quiz session.');
+          // setShowAlert(true);
           alert('You have already joined this quiz in another tab. Please close this tab and return to your existing quiz session.');
           router.push('/lobby');
           return;
@@ -457,16 +458,16 @@ export default function QuizLobby() {
                         </ListItemIcon>
                         <ListItemText
                           primary={participant.email}
-                          secondary={
-                            participant.user_id === quiz?.created_by ? 'Host' : null
-                          }
+                          // secondary={
+                          //   participant.user_id === quiz?.created_by ? 'Host' : null
+                          // }
                         />
                       </ListItem>
                     ))}
                   </List>
                 </Box>
 
-                {isHost && (
+                {/* {isHost && ( */}
                   <Box sx={{ display: 'flex', justifyContent: 'center', mt: 2 }}>
                     <Button
                       variant="contained"
@@ -484,7 +485,7 @@ export default function QuizLobby() {
                       Start Quiz
                     </Button>
                   </Box>
-                )}
+                {/* )} */}
               </Stack>
             ) : (
               <Box>
